@@ -328,23 +328,40 @@
     $('#galeri').hidden = false;
   }
 
+  /* foto Drive langsung dari server gambar Google (lebih cepat, tanpa redirect) */
+  function fotoCepat(u) {
+    var m = /drive\.google\.com\/thumbnail\?id=([^&]+)&sz=w(\d+)/.exec(u || '');
+    return m ? 'https://lh3.googleusercontent.com/d/' + m[1] + '=w' + m[2] : u;
+  }
+
+  function terapkanApi(r) {
+    if (!r || !r.ok) return;
+    (r.galeri || []).forEach(function (g) { g.kecil = fotoCepat(g.kecil); g.besar = fotoCepat(g.besar); });
+    r.hero = fotoCepat(r.hero);
+    if (r.katalog && r.katalog.length) { KAT = normalKatalog(r.katalog); renderSemua(); }
+    if (r.info) {
+      INFO.wa1 = r.info.wa1 || INFO.wa1; INFO.wa2 = r.info.wa2 || INFO.wa2;
+      INFO.instagram = r.info.instagram || INFO.instagram; INFO.lokasi = r.info.lokasi || INFO.lokasi;
+      if (r.info.booklet && r.info.booklet.status) INFO.booklet = r.info.booklet;
+      pasangInfo();
+    }
+    pasangGaleri(r.galeri, r.hero);
+  }
+
   function muatApi() {
     if (!C.API_URL) return;
+    var simpanan = bacaLokal('malomo_api_v1');
+    if (simpanan && simpanan.data) terapkanApi(simpanan.data); // tampil instan dari kunjungan sebelumnya
     fetch(C.API_URL + (C.API_URL.indexOf('?') > 0 ? '&' : '?') + 'api=katalog')
       .then(function (r) { return r.json(); })
       .then(function (r) {
         if (!r || !r.ok) return;
-        if (r.katalog && r.katalog.length) { KAT = normalKatalog(r.katalog); renderSemua(); }
-        if (r.info) {
-          INFO.wa1 = r.info.wa1 || INFO.wa1; INFO.wa2 = r.info.wa2 || INFO.wa2;
-          INFO.instagram = r.info.instagram || INFO.instagram; INFO.lokasi = r.info.lokasi || INFO.lokasi;
-          if (r.info.booklet && r.info.booklet.status) INFO.booklet = r.info.booklet;
-          pasangInfo();
-        }
-        pasangGaleri(r.galeri, r.hero);
+        simpanLokal('malomo_api_v1', { t: Date.now(), data: r });
+        terapkanApi(JSON.parse(JSON.stringify(r)));
       })
       .catch(function () { /* tetap pakai katalog bawaan */ });
   }
+
 
   /* ---------------- navigasi ---------------- */
   function pasangNav() {
