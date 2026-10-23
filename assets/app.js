@@ -324,6 +324,7 @@
     $('#galeri-grid').innerHTML = list.map(function (g) {
       return '<a href="' + esc(g.besar) + '" target="_blank" rel="noopener"><img loading="lazy" src="' + esc(g.kecil) + '" alt="' + esc(g.nama || 'Dokumentasi kegiatan Malomo') + '"></a>';
     }).join('');
+    $('#galeri-grid').setAttribute('data-n', String(list.length));
     $('#galeri').hidden = false;
   }
 
