@@ -1,0 +1,286 @@
+<script>
+/* FILE OTOMATIS dari src/ — jangan diubah manual, ubah di src/ lalu jalankan: node build.js */
+/*
+ * MESIN HITUNG MALOMO
+ * Dipakai di panel admin (browser) dan di tes (Node).
+ * Semua nominal dalam rupiah (bilangan bulat).
+ *
+ * Aturan default (bisa diubah di Pengaturan / per proyek):
+ *   Outbound : biaya (akomodasi 10%, barang 10%) dipotong dari pendapatan outbound,
+ *              laba bersih dibagi: kas Malomo 25%, pembawa order 5%,
+ *              instruktur 50% (per hari x bobot), kas bersama 20%.
+ *   Layanan  : fee Malomo 3% dari LABA layanan = (harga jual - modal) x qty (1,5% bila order dibawa sendiri pengelola).
+ */
+(function (root) {
+  'use strict';
+
+  var KATEGORI_OUTBOUND = ['outbound', 'lainnya'];
+  var KATEGORI_LAYANAN = ['kaos', 'jersey', 'bordir', 'catering', 'dokumentasi'];
+  var STATUS_DIHITUNG = ['Selesai', 'Lunas'];
+
+  var DEFAULT = {
+    persen_akomodasi: 10,
+    persen_barang: 10,
+    persen_kas: 25,
+    persen_pembawa: 5,
+    persen_instruktur: 50,
+    persen_kas_bersama: 20,
+    fee_layanan: 3,
+    fee_layanan_sendiri: 1.5,
+    peran: 'Koordinator:1.5, Instruktur:1'
+  };
+
+  function num(v, d) {
+    if (v === null || v === undefined || v === '') return d === undefined ? 0 : d;
+    if (typeof v === 'number') return isFinite(v) ? v : (d || 0);
+    var s = String(v).replace(/\s/g, '').replace(/^Rp/i, '');
+    // "1.500.000" -> 1500000 ; "1,5" -> 1.5
+    if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');
+    else s = s.replace(',', '.');
+    var n = parseFloat(s);
+    return isFinite(n) ? n : (d === undefined ? 0 : d);
+  }
+
+  function kosong(v) { return v === null || v === undefined || String(v).trim() === ''; }
+  function bulat(n) { return Math.round(n); }
+  function bulatRatus(n) { return Math.round(n / 100) * 100; }
+
+  /** Gabungkan pengaturan umum dengan override per proyek. */
+  function aturan(pengaturan, override) {
+    var a = {};
+    var k;
+    for (k in DEFAULT) a[k] = DEFAULT[k];
+    for (k in (pengaturan || {})) if (!kosong(pengaturan[k])) a[k] = pengaturan[k];
+    for (k in (override || {})) if (!kosong(override[k])) a[k] = override[k];
+    ['persen_akomodasi', 'persen_barang', 'persen_kas', 'persen_pembawa', 'persen_instruktur',
+      'persen_kas_bersama', 'fee_layanan', 'fee_layanan_sendiri'].forEach(function (key) { a[key] = num(a[key]); });
+    return a;
+  }
+
+  /** "Koordinator:1.5, Instruktur:1" -> [{nama:'Koordinator', bobot:1.5}, ...] */
+  function daftarPeran(teks) {
+    return String(teks || DEFAULT.peran).split(/[,;\n]/).map(function (s) {
+      var p = s.split(':');
+      return { nama: (p[0] || '').trim(), bobot: num(p[1], 1) };
+    }).filter(function (p) { return p.nama; });
+  }
+
+  function bobotPeran(peran, teksPeran) {
+    var list = daftarPeran(teksPeran);
+    for (var i = 0; i < list.length; i++) if (list[i].nama.toLowerCase() === String(peran || '').toLowerCase()) return list[i].bobot;
+    return 1;
+  }
+
+  /** "1|1|0,5" atau [1,1,0.5] -> total hari hadir (1 = penuh, 0.5 = setengah hari) */
+  function totalHadir(hadir) {
+    var arr = Array.isArray(hadir) ? hadir : String(hadir === undefined || hadir === null ? '' : hadir).split(/[|;]/);
+    return arr.reduce(function (s, x) { return s + num(x); }, 0);
+  }
+
+  /**
+   * Bagi `total` ke beberapa bobot, hasil bulat yang jumlahnya PERSIS `total`
+   * (metode sisa terbesar).
+   */
+  function bagiProporsional(total, bobot) {
+    var jml = bobot.reduce(function (s, b) { return s + Math.max(0, b); }, 0);
+    if (!jml || total <= 0) return bobot.map(function () { return 0; });
+    var mentah = bobot.map(function (b) { return total * Math.max(0, b) / jml; });
+    var hasil = mentah.map(Math.floor);
+    var sisa = total - hasil.reduce(function (s, x) { return s + x; }, 0);
+    var urut = mentah.map(function (m, i) { return { i: i, f: m - Math.floor(m) }; })
+      .sort(function (a, b) { return b.f - a.f || a.i - b.i; });
+    for (var j = 0; j < sisa && j < urut.length; j++) hasil[urut[j].i] += 1;
+    return hasil;
+  }
+
+  function nilaiItem(it) { return bulat(num(it.harga) * num(it.qty, 1)); }
+
+  /**
+   * Hitung pembagian satu proyek.
+   * proyek: { items:[{kategori,nama,harga,qty,pengelola_id,sendiri}], pembawa_id,
+   *           biaya_akomodasi, biaya_barang, override:{...} }
+   * kru:    [{anggota_id, nama, peran, bobot?, hadir:"1|1|0.5", manual?}]
+   */
+  function hitungProyek(proyek, kru, pengaturan) {
+    proyek = proyek || {};
+    kru = kru || [];
+    var a = aturan(pengaturan, proyek.override);
+    var peringatan = [];
+    var items = proyek.items || [];
+
+    var pendapatanOutbound = 0, pendapatanLayanan = 0;
+    var layanan = [];
+    items.forEach(function (it) {
+      var kat = String(it.kategori || 'lainnya').toLowerCase();
+      var nilai = nilaiItem(it);
+      if (KATEGORI_LAYANAN.indexOf(kat) >= 0) {
+        var sendiri = it.sendiri === true || String(it.sendiri).toUpperCase() === 'TRUE' || it.sendiri === 1;
+        var persen = sendiri ? a.fee_layanan_sendiri : a.fee_layanan;
+        var adaModal = !kosong(it.modal);
+        var modal = adaModal ? bulat(num(it.modal) * num(it.qty, 1)) : 0;
+        var labaL = adaModal ? nilai - modal : 0;
+        var fee = labaL > 0 ? bulat(labaL * persen / 100) : 0; // fee dari LABA layanan (harga jual - modal)
+        layanan.push({ nama: it.nama, kategori: kat, nilai: nilai, modal: modal, adaModal: adaModal, laba: labaL, persen: persen, fee: fee,
+          untukPengelola: nilai - fee, pengelola_id: it.pengelola_id || '', sendiri: sendiri });
+        pendapatanLayanan += nilai;
+        if (!it.pengelola_id && nilai) peringatan.push('Pengelola untuk "' + it.nama + '" belum dipilih.');
+        if (!adaModal && nilai) peringatan.push('Modal untuk "' + it.nama + '" belum diisi, fee Malomo belum dihitung.');
+      } else {
+        pendapatanOutbound += nilai;
+      }
+    });
+
+    var manualAkom = !kosong(proyek.biaya_akomodasi);
+    var manualBarang = !kosong(proyek.biaya_barang);
+    var akomodasi = manualAkom ? bulat(num(proyek.biaya_akomodasi)) : bulat(pendapatanOutbound * a.persen_akomodasi / 100);
+    var barang = manualBarang ? bulat(num(proyek.biaya_barang)) : bulat(pendapatanOutbound * a.persen_barang / 100);
+    var laba = pendapatanOutbound - akomodasi - barang;
+
+    var totalPersen = a.persen_kas + a.persen_pembawa + a.persen_instruktur + a.persen_kas_bersama;
+    if (Math.abs(totalPersen - 100) > 0.001) peringatan.push('Total persen pembagian laba = ' + totalPersen + '%, seharusnya 100%. Selisihnya masuk kas Malomo.');
+
+    var pos = { kas: 0, pembawa: 0, instruktur: 0, kasBersama: 0 };
+    if (laba < 0) {
+      peringatan.push('Proyek rugi: biaya lebih besar dari pendapatan outbound (laba ' + laba + ').');
+    } else if (laba > 0) {
+      var adaPembawa = !kosong(proyek.pembawa_id);
+      pos.pembawa = adaPembawa ? bulat(laba * a.persen_pembawa / 100) : 0;
+      pos.instruktur = bulat(laba * a.persen_instruktur / 100);
+      pos.kasBersama = bulat(laba * a.persen_kas_bersama / 100);
+      pos.kas = laba - pos.pembawa - pos.instruktur - pos.kasBersama; // sisa (termasuk jatah pembawa bila kosong)
+    }
+
+    // Instruktur: manual dulu, sisanya dibagi poin (bobot x hari hadir)
+    var detailKru = kru.map(function (k) {
+      var bobot = kosong(k.bobot) ? bobotPeran(k.peran, a.peran) : num(k.bobot, 1);
+      var hari = totalHadir(k.hadir);
+      return { anggota_id: k.anggota_id, nama: k.nama || '', peran: k.peran || '', bobot: bobot, hari: hari,
+        poin: bobot * hari, manual: kosong(k.manual) ? null : bulat(num(k.manual)), diterima: 0 };
+    });
+    var totalManual = detailKru.reduce(function (s, k) { return s + (k.manual === null ? 0 : k.manual); }, 0);
+    var sisaPool = pos.instruktur - totalManual;
+    if (totalManual > pos.instruktur) peringatan.push('Nominal manual instruktur melebihi dana instruktur.');
+    var otomatis = detailKru.filter(function (k) { return k.manual === null; });
+    var bagian = bagiProporsional(Math.max(0, sisaPool), otomatis.map(function (k) { return k.poin; }));
+    otomatis.forEach(function (k, i) { k.diterima = bagian[i]; });
+    detailKru.forEach(function (k) { if (k.manual !== null) k.diterima = k.manual; });
+    var totalPoin = otomatis.reduce(function (s, k) { return s + k.poin; }, 0);
+    var instrukturTerbagi = detailKru.reduce(function (s, k) { return s + k.diterima; }, 0);
+    if (pos.instruktur > 0 && !detailKru.length) peringatan.push('Belum ada kru/instruktur. Dana instruktur belum terbagi.');
+    else if (pos.instruktur > 0 && sisaPool > 0 && !totalPoin) peringatan.push('Kehadiran kru belum diisi. Dana instruktur belum terbagi.');
+
+    var feeLayanan = layanan.reduce(function (s, l) { return s + l.fee; }, 0);
+
+    // Rangkuman per anggota untuk proyek ini
+    var perAnggota = {};
+    function tambah(id, nama, jenis, nilai) {
+      if (kosong(id) || !nilai) return;
+      if (!perAnggota[id]) perAnggota[id] = { anggota_id: id, nama: nama || '', instruktur: 0, pembawa: 0, layanan: 0, total: 0 };
+      perAnggota[id][jenis] += nilai;
+      perAnggota[id].total += nilai;
+      if (nama && !perAnggota[id].nama) perAnggota[id].nama = nama;
+    }
+    detailKru.forEach(function (k) { tambah(k.anggota_id, k.nama, 'instruktur', k.diterima); });
+    tambah(proyek.pembawa_id, proyek.pembawa_nama, 'pembawa', pos.pembawa);
+    layanan.forEach(function (l) { tambah(l.pengelola_id, '', 'layanan', l.untukPengelola); });
+
+    return {
+      aturan: a,
+      pendapatanOutbound: pendapatanOutbound,
+      pendapatanLayanan: pendapatanLayanan,
+      total: pendapatanOutbound + pendapatanLayanan,
+      akomodasi: akomodasi, akomodasiManual: manualAkom,
+      barang: barang, barangManual: manualBarang,
+      laba: laba,
+      pos: pos,
+      kru: detailKru,
+      totalPoin: totalPoin,
+      perPoin: totalPoin ? Math.max(0, sisaPool) / totalPoin : 0,
+      instrukturBelumTerbagi: pos.instruktur - instrukturTerbagi,
+      layanan: layanan,
+      feeLayanan: feeLayanan,
+      kasMalomoTotal: pos.kas + feeLayanan,
+      perAnggota: Object.keys(perAnggota).map(function (k) { return perAnggota[k]; }),
+      peringatan: peringatan
+    };
+  }
+
+  function bulanDari(tgl) {
+    if (!tgl) return '';
+    if (tgl instanceof Date) return tgl.getFullYear() + '-' + ('0' + (tgl.getMonth() + 1)).slice(-2);
+    return String(tgl).slice(0, 7);
+  }
+
+  /**
+   * Rekap satu bulan ("2026-11").
+   * data: { pesanan:[...], kru:[...], anggota:[...] }
+   * Proyek dihitung bila status Selesai/Lunas dan tanggal kegiatan di bulan itu.
+   * Kas bersama dibagi RATA ke semua anggota aktif.
+   */
+  function rekapBulan(bulan, data, pengaturan) {
+    var anggota = (data.anggota || []);
+    var aktif = anggota.filter(function (x) {
+      var ya = x.aktif === true || String(x.aktif).toUpperCase() === 'TRUE' || x.aktif === 'Ya';
+      return ya && !(x.bergabung && bulanDari(x.bergabung) > bulan); // yang bergabung setelah bulan itu tidak dihitung
+    });
+    var namaById = {};
+    anggota.forEach(function (x) { namaById[x.id] = x.nama; });
+
+    var proyekBulan = (data.pesanan || []).filter(function (p) {
+      return STATUS_DIHITUNG.indexOf(p.status) >= 0 && bulanDari(p.tgl_mulai) === bulan;
+    });
+
+    var baris = {};
+    function row(id) {
+      if (!baris[id]) baris[id] = { anggota_id: id, nama: namaById[id] || id, instruktur: 0, pembawa: 0, layanan: 0, kasBersama: 0, total: 0 };
+      return baris[id];
+    }
+    aktif.forEach(function (x) { row(x.id); });
+
+    var tot = { pendapatan: 0, kas: 0, feeLayanan: 0, kasBersama: 0, instruktur: 0, pembawa: 0, akomodasi: 0, barang: 0, belumTerbagi: 0 };
+    var hasilProyek = proyekBulan.map(function (p) {
+      var kru = (data.kru || []).filter(function (k) { return k.pesanan_id === p.id; });
+      var h = hitungProyek(p, kru, pengaturan);
+      h.perAnggota.forEach(function (pa) {
+        var r = row(pa.anggota_id);
+        r.instruktur += pa.instruktur; r.pembawa += pa.pembawa; r.layanan += pa.layanan;
+      });
+      tot.pendapatan += h.total; tot.kas += h.pos.kas; tot.feeLayanan += h.feeLayanan;
+      tot.kasBersama += h.pos.kasBersama; tot.instruktur += h.pos.instruktur; tot.pembawa += h.pos.pembawa;
+      tot.akomodasi += h.akomodasi; tot.barang += h.barang;
+      tot.belumTerbagi += h.instrukturBelumTerbagi + h.layanan.filter(function (l) { return !l.pengelola_id; }).reduce(function (s, l) { return s + l.untukPengelola; }, 0);
+      return { id: p.id, nama: p.instansi || p.nama, tgl: p.tgl_mulai, hasil: h };
+    });
+
+    var bagianKas = bagiProporsional(tot.kasBersama, aktif.map(function () { return 1; }));
+    aktif.forEach(function (x, i) { row(x.id).kasBersama = bagianKas[i]; });
+    if (tot.kasBersama > 0 && !aktif.length) tot.peringatan = 'Belum ada anggota aktif, kas bersama belum terbagi.';
+
+    var list = Object.keys(baris).map(function (k) {
+      var r = baris[k];
+      r.total = r.instruktur + r.pembawa + r.layanan + r.kasBersama;
+      return r;
+    }).sort(function (x, y) { return y.total - x.total || String(x.nama).localeCompare(String(y.nama)); });
+
+    return { bulan: bulan, proyek: hasilProyek, anggota: list, total: tot, jumlahAnggotaAktif: aktif.length,
+      kasBersamaPerOrang: aktif.length ? Math.floor(tot.kasBersama / aktif.length) : 0 };
+  }
+
+  function rupiah(n) {
+    n = Math.round(num(n));
+    var s = Math.abs(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return (n < 0 ? '-Rp' : 'Rp') + s;
+  }
+
+  var api = {
+    DEFAULT: DEFAULT, KATEGORI_OUTBOUND: KATEGORI_OUTBOUND, KATEGORI_LAYANAN: KATEGORI_LAYANAN,
+    STATUS_DIHITUNG: STATUS_DIHITUNG,
+    num: num, aturan: aturan, daftarPeran: daftarPeran, bobotPeran: bobotPeran, totalHadir: totalHadir,
+    bagiProporsional: bagiProporsional, hitungProyek: hitungProyek, rekapBulan: rekapBulan,
+    bulanDari: bulanDari, rupiah: rupiah, bulatRatus: bulatRatus
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.MalomoHitung = api;
+})(this);
+
+</script>

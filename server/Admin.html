@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin Malomo</title>
+<style>
+:root{--or:#E8772E;--or2:#C9601B;--or3:#FDEBDD;--krem:#FFF7F1;--ink:#1C1C1E;--ink2:#3A3A3F;--mut:#6B6B72;--garis:#ECE5DE;--bg:#F7F5F3;--hijau:#1A7F37;--hijau2:#E6F4EA;--merah:#C4321B;--merah2:#FBE9E5;--kuning:#9A6700;--kuning2:#FFF4D6;--biru:#0B5CAD;--biru2:#E5F0FB;--r:14px}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink);font-size:14.5px;line-height:1.5}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--or2)}
+h1,h2,h3{margin:0;line-height:1.2;letter-spacing:-.01em}
+h1{font-size:22px}h2{font-size:17px}h3{font-size:15px}
+.app{display:grid;grid-template-columns:1fr;min-height:100vh}
+@media(min-width:960px){.app{grid-template-columns:220px 1fr}}
+.side{background:var(--ink);color:#fff;padding:14px;display:flex;gap:6px;align-items:center;position:sticky;top:0;z-index:20;overflow-x:auto}
+.side .logo{font-weight:800;letter-spacing:.25em;font-size:14px;display:flex;align-items:center;gap:8px;margin-right:8px;white-space:nowrap}
+.side .logo svg{width:24px;height:20px;color:var(--or)}
+.side nav{display:flex;gap:4px}
+.side nav button{background:transparent;border:0;color:rgba(255,255,255,.75);padding:8px 12px;border-radius:9px;cursor:pointer;font-weight:600;white-space:nowrap;text-align:left}
+.side nav button:hover{background:rgba(255,255,255,.08);color:#fff}
+.side nav button.aktif{background:var(--or);color:#fff}
+.side .user{display:none}
+@media(min-width:960px){.side{flex-direction:column;align-items:stretch;height:100vh;padding:20px 14px}.side .logo{margin:0 0 18px 6px}.side nav{flex-direction:column}.side .user{display:block;margin-top:auto;font-size:12px;color:rgba(255,255,255,.55);padding:6px;word-break:break-all}}
+main{padding:18px 14px 80px;min-width:0}
+@media(min-width:720px){main{padding:26px 28px 80px}}
+.head{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:18px}
+.head h1{margin-right:auto}
+.kartu{background:#fff;border:1px solid var(--garis);border-radius:var(--r);padding:16px;margin-bottom:14px;min-width:0}
+.kartu>h2,.kartu>.kh{margin-bottom:12px}
+.kh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.kh h2{margin-right:auto}
+.grid{display:grid;gap:12px}
+.g2{grid-template-columns:1fr}.g3{grid-template-columns:1fr}.g4{grid-template-columns:1fr 1fr}
+@media(min-width:720px){.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}}
+.stat{background:#fff;border:1px solid var(--garis);border-radius:var(--r);padding:14px}
+.stat small{color:var(--mut);font-weight:600;font-size:12.5px}.stat b{display:block;font-size:21px;margin-top:2px;letter-spacing:-.02em}.stat span{color:var(--mut);font-size:12.5px}
+.btn{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:9px;padding:9px 14px;background:var(--or);color:#fff;font-weight:700;cursor:pointer;white-space:nowrap;text-decoration:none}
+.btn:hover{background:var(--or2)}.btn[disabled]{opacity:.5;cursor:wait}
+.btn.ab{background:#fff;color:var(--ink);box-shadow:inset 0 0 0 1px var(--garis)}.btn.ab:hover{background:var(--krem)}
+.btn.kc{padding:6px 10px;font-size:13px}
+.btn.hijau{background:var(--hijau)}.btn.merah{background:#fff;color:var(--merah);box-shadow:inset 0 0 0 1px #F0C4BA}
+label.f{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:13px;color:var(--ink2)}
+label.f small{font-weight:400;color:var(--mut)}
+input,select,textarea{border:1px solid #DDD3CA;border-radius:8px;padding:8px 10px;background:#fff;width:100%;min-width:0}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--or);box-shadow:0 0 0 3px rgba(232,119,46,.15)}
+input[type=checkbox]{width:18px;height:18px;accent-color:var(--or);padding:0}
+.tw{overflow-x:auto;border:1px solid var(--garis);border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{background:#FBF8F5;text-align:left;font-weight:700;color:var(--ink2);padding:9px 10px;white-space:nowrap;border-bottom:1px solid var(--garis);font-size:12.5px}
+td{padding:8px 10px;border-bottom:1px solid #F3EEE9;vertical-align:middle}
+tr:last-child td{border-bottom:0}
+td.r,th.r{text-align:right}td.c,th.c{text-align:center}
+tbody tr.klik{cursor:pointer}tbody tr.klik:hover{background:var(--krem)}
+td input,td select{padding:6px 8px;width:auto}
+td select{min-width:120px}
+#k-item td,#k-item th{padding:6px 5px}#k-item td select{min-width:100px}
+#k-kru td,#k-kru th{padding:6px 6px}
+td input[type=checkbox]{min-width:0}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.s-Baru{background:var(--biru2);color:var(--biru)}.s-Penawaran{background:var(--kuning2);color:var(--kuning)}.s-DP{background:#F1E8FD;color:#6B3FB5}.s-Berjalan{background:var(--or3);color:var(--or2)}.s-Selesai{background:var(--hijau2);color:var(--hijau)}.s-Lunas{background:var(--hijau);color:#fff}.s-Batal{background:#EEE;color:#777}
+.s-Belum{background:var(--kuning2);color:var(--kuning)}
+.mut{color:var(--mut)}.kecil{font-size:12.5px}.tebal{font-weight:700}.ka{text-align:right}
+.peringatan{background:var(--kuning2);color:#6B4A00;border-radius:10px;padding:10px 12px;font-size:13px;margin:8px 0}
+.peringatan div+div{margin-top:4px}
+.alur{display:grid;gap:6px;font-size:13.5px}
+.alur .baris{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed #EEE5DD}
+.alur .baris.tot{font-weight:800;border-bottom:2px solid var(--ink);font-size:14.5px}
+.alur .baris.sub{padding-left:14px;color:var(--ink2)}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.toolbar input,.toolbar select{width:auto}
+.hari-sel{display:flex;gap:4px;flex-wrap:wrap}
+.hari-sel select{width:96px;min-width:96px;padding:5px 4px;font-size:12.5px}
+.kosong{padding:28px;text-align:center;color:var(--mut)}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(120px);background:var(--ink);color:#fff;padding:11px 18px;border-radius:10px;font-weight:600;z-index:99;transition:transform .25s;max-width:90vw}
+.toast.on{transform:translateX(-50%)}.toast.galat{background:var(--merah)}
+.layar{position:fixed;inset:0;background:var(--bg);display:grid;place-items:center;z-index:50;padding:20px;text-align:center}
+.layar .box{max-width:460px}
+.spin{width:34px;height:34px;border-radius:50%;border:3px solid var(--or3);border-top-color:var(--or);animation:p 1s linear infinite;margin:0 auto 14px}
+@keyframes p{to{transform:rotate(360deg)}}
+.tab2{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.tab2 button{border:1px solid var(--garis);background:#fff;border-radius:999px;padding:6px 12px;font-weight:600;cursor:pointer;font-size:13px}
+.tab2 button.aktif{background:var(--ink);color:#fff;border-color:var(--ink)}
+.dua{display:grid;gap:14px;grid-template-columns:1fr}
+@media(min-width:1280px){.dua{grid-template-columns:minmax(0,1fr) 350px}.lekat{position:sticky;top:16px}}
+details summary{cursor:pointer;font-weight:700;color:var(--ink2);padding:4px 0}
+.gelap{background:var(--ink);color:#fff;border:0}
+.gelap .mut{color:rgba(255,255,255,.6)}
+.gelap .alur .baris{border-bottom-color:rgba(255,255,255,.12)}.gelap .alur .baris.tot{border-bottom-color:#fff}
+.gelap .alur .baris.sub{color:rgba(255,255,255,.8)}
+.angka-or{color:#FFB27A}
+</style>
+</head>
+<body>
+<div class="layar" id="layar"><div class="box"><div class="spin"></div><b>Memuat data Malomo…</b><p class="mut kecil" id="layar-teks">Pertama kali dibuka, Google akan meminta izin akses.</p></div></div>
+
+<div class="app" id="app" hidden>
+  <aside class="side">
+    <div class="logo"><svg viewBox="4 16 92 68" aria-hidden="true"><path d="M10 76.8 L33.3 23 L49.3 53.6 L66.7 23 L90 73.9" fill="none" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" stroke-linejoin="round"/></svg>MALOMO</div>
+    <nav id="menu">
+      <button data-v="dasbor">Dasbor</button>
+      <button data-v="pesanan">Pesanan &amp; Proyek</button>
+      <button data-v="rekap">Rekap Bulanan</button>
+      <button data-v="anggota">Anggota</button>
+      <button data-v="katalog">Katalog Harga</button>
+      <button data-v="pengaturan">Pengaturan</button>
+    </nav>
+    <div class="user" id="user"></div>
+  </aside>
+  <main id="isi"></main>
+</div>
+<div class="toast" id="toast"></div>
+
+<?!= include('Hitung'); ?>
+<script>
+'use strict';
+const H = window.MalomoHitung;
+const rp = H.rupiah;
+let D = null;          // semua data
+let V = 'dasbor';      // tampilan aktif
+let E = null;          // pesanan yang sedang dibuka {p, items, kru, override}
+let FILTER = { status: 'aktif', cari: '' };
+let BULAN = (() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); })();
+
+const $ = (s, el) => (el || document).querySelector(s);
+const $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
+const esc = s => String(s === undefined || s === null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const num = v => H.num(v);
+const KATEGORI = ['outbound', 'kaos', 'jersey', 'bordir', 'catering', 'dokumentasi', 'lainnya'];
+const NAMA_BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+const bulanIndo = b => b ? NAMA_BULAN[Number(b.slice(5, 7)) - 1] + ' ' + b.slice(0, 4) : '';
+const tglIndo = s => { if (!s) return '-'; const p = String(s).slice(0, 10).split('-'); return p.length < 3 ? s : Number(p[2]) + ' ' + NAMA_BULAN[Number(p[1]) - 1].slice(0, 3) + ' ' + p[0]; };
+const hariIni = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
+const waNo = w => { let d = String(w || '').replace(/\D/g, ''); if (d.startsWith('0')) d = '62' + d.slice(1); return d; };
+
+</script>
+<?!= include('AdminJs'); ?>
+</body>
+</html>
